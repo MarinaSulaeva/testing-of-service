@@ -6,7 +6,7 @@ import com.skypro.simplebanking.entity.User;
 import com.skypro.simplebanking.repository.AccountRepository;
 import com.skypro.simplebanking.repository.UserRepository;
 import org.json.JSONObject;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@Testcontainers
+//@Testcontainers
 public class IntegrationTests {
 
     @Autowired
@@ -46,17 +46,17 @@ public class IntegrationTests {
     private AccountRepository accountRepository;
     private PasswordEncoder passwordEncoder;
 
-    @Container
-    private static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:latest")
-            .withUsername("postgres")
-            .withPassword("73aberiv");
-
-    @DynamicPropertySource
-    static void postgresProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-    }
+//    @Container
+//    private static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:latest")
+//            .withUsername("postgres")
+//            .withPassword("73aberiv");
+//
+//    @DynamicPropertySource
+//    static void postgresProperties(DynamicPropertyRegistry registry) {
+//        registry.add("spring.datasource.url", postgres::getJdbcUrl);
+//        registry.add("spring.datasource.username", postgres::getUsername);
+//        registry.add("spring.datasource.password", postgres::getPassword);
+//    }
 
 
     @Test
@@ -67,7 +67,6 @@ public class IntegrationTests {
         createUserRequest.put("username", "Ivan");
         createUserRequest.put("password", "ivan1234");
         mockMvc.perform(post("/user/")
-//                        .header("admin-token", "SUPER_SECRET_KEY_FROM_ADMIN")
                 .contentType(MediaType.APPLICATION_JSON)
                 .contentType(createUserRequest.toString()))
                 .andExpect(status().isOk());
