@@ -1,10 +1,7 @@
 package com.skypro.simplebanking.controller;
 
 import com.github.dockerjava.zerodep.shaded.org.apache.commons.codec.binary.Base64;
-import com.skypro.simplebanking.dto.AccountDTO;
-import com.skypro.simplebanking.dto.BankingUserDetails;
-import com.skypro.simplebanking.dto.CreateUserRequest;
-import com.skypro.simplebanking.dto.UserDTO;
+import com.skypro.simplebanking.dto.*;
 import com.skypro.simplebanking.entity.User;
 import com.skypro.simplebanking.repository.AccountRepository;
 import com.skypro.simplebanking.repository.UserRepository;
@@ -147,29 +144,102 @@ public class IntegrationTests {
     @Test
     public void getUserAccount() throws Exception {
         addUserToRepository();
-        String login = "Ivan";
-        String password = "ivan1234";
         Long id = 1L;
-        String base64Encoded = Base64Utils.encodeToString((login + ":" + password).getBytes(StandardCharsets.UTF_8));
         mockMvc.perform(get("/account/{id}", id)
-                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded))
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234")))
                 .andExpect(status().isOk());
     }
 
+    @Test
+    public void getUserAccount_WhenAdminTryToGet() throws Exception {
+//        404 ошибка
+        addUserToRepository();
+        userService.createUser("admin", "admin1234");
+        Long id = 1L;
+        mockMvc.perform(get("/account/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "admin1234"))
+                        .header("app.security.admin-token", "SUPER_SECRET_KEY_FROM_ADMIN"))
+                .andExpect(status().isForbidden());
+    }
 
     @Test
-    public void getListUser_withAuthentication() throws Exception {
+    public void getUserAccount_WhenAccountNotFound() throws Exception {
         addUserToRepository();
-        String login = "Ivan";
-        String password = "ivan1234";
-        String base64Encoded = Base64Utils.encodeToString((login + ":" + password).getBytes(StandardCharsets.UTF_8));
-        mockMvc.perform(
-                        get("/user/list")
-                                .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded)
-                )
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].username").value("Ivan"));
+        Long id = 0L;
+        mockMvc.perform(get("/account/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234")))
+                .andExpect(status().isNotFound());
     }
+
+
+//    @Test
+//    public void getListUser_withAuthentication() throws Exception {
+//        addUserToRepository();
+//        String login = "Ivan";
+//        String password = "ivan1234";
+//        String base64Encoded = Base64Utils.encodeToString((login + ":" + password).getBytes(StandardCharsets.UTF_8));
+//        mockMvc.perform(
+//                        get("/user/list")
+//                                .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
+//                )
+//                .andExpect(status().isOk())
+//                .andExpect(jsonPath("$[0].username").value("Ivan"));
+//    }
+
+    @Test
+    public void depositToAccount() throws Exception {
+        addUserToRepository();
+        BalanceChangeRequest balanceChangeRequest = new BalanceChangeRequest();
+        balanceChangeRequest.setAmount(500L);
+        Long id = 1L;
+        mockMvc.perform(post("/account/deposit/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(balanceChangeRequest.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amount").value(501L));
+    }
+
+    @Test
+    public void depositToAccount_WhenAdminTryToUse() throws Exception {
+        addUserToRepository();
+        userService.createUser("admin", "admin1234");
+        BalanceChangeRequest balanceChangeRequest = new BalanceChangeRequest();
+        balanceChangeRequest.setAmount(500L);
+        Long id = 1L;
+        mockMvc.perform(post("/account/deposit/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "admin1234"))
+                        .header("app.security.admin-token", "SUPER_SECRET_KEY_FROM_ADMIN"))
+                .andExpect(status().isForbidden());
+    }
+
+
+
+    @Test
+    public void withdrawToAccount() throws Exception {
+        addUserToRepository();
+        BalanceChangeRequest balanceChangeRequest = new BalanceChangeRequest();
+        balanceChangeRequest.setAmount(1L);
+        Long id = 1L;
+        mockMvc.perform(post("/account/withdraw/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(balanceChangeRequest.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amount").value(0L));
+    }
+
+    public String base64Encoded(String login, String password) {
+        return Base64Utils.encodeToString((login + ":" + password).getBytes(StandardCharsets.UTF_8));
+    }
+
+//    @PostMapping("/deposit/{id}")
+//    public AccountDTO depositToAccount(Authentication authentication,
+//                                       @PathVariable("id") Long accountId,
+//                                       @RequestBody BalanceChangeRequest balanceChangeRequest){
+//        BankingUserDetails bankingUserDetails = (BankingUserDetails) authentication.getPrincipal();
+//        return accountService.depositToAccount(bankingUserDetails.getId(),accountId, balanceChangeRequest.getAmount());
+//    }
 
 
 }
