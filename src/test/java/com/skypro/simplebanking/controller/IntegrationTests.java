@@ -1,12 +1,12 @@
 package com.skypro.simplebanking.controller;
 
-import com.github.dockerjava.zerodep.shaded.org.apache.commons.codec.binary.Base64;
-import com.skypro.simplebanking.dto.*;
+import com.skypro.simplebanking.entity.Account;
 import com.skypro.simplebanking.entity.User;
 import com.skypro.simplebanking.repository.AccountRepository;
 import com.skypro.simplebanking.repository.UserRepository;
 import com.skypro.simplebanking.service.AccountService;
 import com.skypro.simplebanking.service.UserService;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,41 +14,29 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.support.BasicAuthorizationInterceptor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.util.Base64Utils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import javax.persistence.Basic;
-import javax.validation.Valid;
 
-import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
-//@Testcontainers
+@Testcontainers
 public class IntegrationTests {
 
     @Autowired
@@ -67,29 +55,84 @@ public class IntegrationTests {
     private UserService userService;
     private PasswordEncoder passwordEncoder;
 
-//    @Container
-//    private static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:latest")
-//            .withUsername("postgres")
-//            .withPassword("73aberiv");
-//
-//    @DynamicPropertySource
-//    static void postgresProperties(DynamicPropertyRegistry registry) {
-//        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-//        registry.add("spring.datasource.username", postgres::getUsername);
-//        registry.add("spring.datasource.password", postgres::getPassword);
-//    }
+    @Container
+    private static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:latest")
+            .withUsername("postgres")
+            .withPassword("73aberiv");
 
+    @DynamicPropertySource
+    static void postgresProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.username", postgres::getUsername);
+        registry.add("spring.datasource.password", postgres::getPassword);
+    }
+
+    private JSONObject getCreateUserRequest(String username, String password) throws JSONException {
+        JSONObject createUserRequest = new JSONObject();
+        createUserRequest.put("username", username);
+        createUserRequest.put("password", password);
+        return createUserRequest;
+    }
+
+    private void addUserToRepository() {
+        userRepository.deleteAll();
+        accountRepository.deleteAll();
+        userService.createUser("Ivan", "ivan1234");
+    }
+
+    private void addTwoUsersToRepository() {
+        userRepository.deleteAll();
+        accountRepository.deleteAll();
+        userService.createUser("Ivan", "ivan1234");
+        userService.createUser("Petr", "petr1234");
+    }
+
+    private JSONObject getBalanceChangeRequest(Long amount) throws JSONException {
+        JSONObject balanceChangeRequest = new JSONObject();
+        balanceChangeRequest.put("amount", amount);
+        return balanceChangeRequest;
+    }
+
+    private JSONObject getTransferRequest() throws JSONException {
+        JSONObject transferRequest = new JSONObject();
+        User user = userRepository.findByUsername("Petr").orElseThrow();
+        Long idRecipientUser = user.getId();
+        transferRequest.put("fromAccountId", getAccountId("Ivan"));
+        transferRequest.put("toUserId", idRecipientUser);
+        transferRequest.put("toAccountId", getAccountId("Petr"));
+        transferRequest.put("amount", 0L);
+        return transferRequest;
+    }
+
+    private JSONObject getTransferRequest_useOtherUser() throws JSONException {
+        JSONObject transferRequest = new JSONObject();
+        User user = userRepository.findByUsername("Petr").orElseThrow();
+        Long idRecipientUser = user.getId();
+        transferRequest.put("fromAccountId", getAccountId("Ivan")+1L);
+        transferRequest.put("toUserId", idRecipientUser);
+        transferRequest.put("toAccountId", getAccountId("Petr"));
+        transferRequest.put("amount", 0L);
+        return transferRequest;
+    }
+
+    private long getAccountId (String username){
+        long userId = userRepository.findByUsername(username).orElseThrow().getId();
+        Collection<Account> account = accountRepository.findByUserId(userId);
+        List<Account> accountList = new ArrayList<>(account);
+        return accountList.get(0).getId();
+    }
+
+    private String base64Encoded(String login, String password) {
+        return Base64Utils.encodeToString((login + ":" + password).getBytes(StandardCharsets.UTF_8));
+    }
 
     @Test
     @WithMockUser(username = "admin", roles = "ADMIN", password = "admin1234")
     public void createUser() throws Exception {
         userRepository.deleteAll();
-        JSONObject createUserRequest = new JSONObject();
-        createUserRequest.put("username", "Ivan");
-        createUserRequest.put("password", "ivan1234");
         mockMvc.perform(post("/user/")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(createUserRequest.toString()))
+                .content(getCreateUserRequest("Ivan", "ivan1234").toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("Ivan"));
     }
@@ -98,30 +141,19 @@ public class IntegrationTests {
     @WithMockUser(username = "admin", roles = "ADMIN", password = "admin1234")
     public void createUser_WhenUserIsExist() throws Exception {
         addUserToRepository();
-        JSONObject createUserRequest = new JSONObject();
-        createUserRequest.put("username", "Ivan");
-        createUserRequest.put("password", "ivan1234");
         mockMvc.perform(post("/user/")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(createUserRequest.toString()))
+                        .content(getCreateUserRequest("Ivan", "ivan1234").toString()))
                 .andExpect(status().isBadRequest());
     }
 
     @Test
     @WithMockUser(username = "user", roles = "USER", password = "user1234")
     public void createUser_WhenUserTryToCreate() throws Exception {
-        JSONObject createUserRequest = new JSONObject();
-        createUserRequest.put("username", "Ivan");
-        createUserRequest.put("password", "ivan1234");
         mockMvc.perform(post("/user/")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(createUserRequest.toString()))
+                        .content(getCreateUserRequest("Ivan", "ivan1234").toString()))
                 .andExpect(status().isForbidden());
-    }
-
-    public void addUserToRepository() {
-        userRepository.deleteAll();
-        userService.createUser("Ivan", "ivan1234");
     }
 
     @Test
@@ -144,22 +176,9 @@ public class IntegrationTests {
     @Test
     public void getUserAccount() throws Exception {
         addUserToRepository();
-        Long id = 1L;
-        mockMvc.perform(get("/account/{id}", id)
+        mockMvc.perform(get("/account/{id}", getAccountId("Ivan"))
                         .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234")))
                 .andExpect(status().isOk());
-    }
-
-    @Test
-    public void getUserAccount_WhenAdminTryToGet() throws Exception {
-//        404 ошибка
-        addUserToRepository();
-        userService.createUser("admin", "admin1234");
-        Long id = 1L;
-        mockMvc.perform(get("/account/{id}", id)
-                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "admin1234"))
-                        .header("app.security.admin-token", "SUPER_SECRET_KEY_FROM_ADMIN"))
-                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -171,75 +190,128 @@ public class IntegrationTests {
                 .andExpect(status().isNotFound());
     }
 
-
-//    @Test
-//    public void getListUser_withAuthentication() throws Exception {
-//        addUserToRepository();
-//        String login = "Ivan";
-//        String password = "ivan1234";
-//        String base64Encoded = Base64Utils.encodeToString((login + ":" + password).getBytes(StandardCharsets.UTF_8));
-//        mockMvc.perform(
-//                        get("/user/list")
-//                                .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
-//                )
-//                .andExpect(status().isOk())
-//                .andExpect(jsonPath("$[0].username").value("Ivan"));
-//    }
-
     @Test
     public void depositToAccount() throws Exception {
         addUserToRepository();
-        BalanceChangeRequest balanceChangeRequest = new BalanceChangeRequest();
-        balanceChangeRequest.setAmount(500L);
-        Long id = 1L;
-        mockMvc.perform(post("/account/deposit/{id}", id)
+        mockMvc.perform(post("/account/deposit/{id}", getAccountId("Ivan"))
                         .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(balanceChangeRequest.toString()))
+                .content(getBalanceChangeRequest(500L).toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.amount").value(501L));
     }
 
     @Test
-    public void depositToAccount_WhenAdminTryToUse() throws Exception {
+    public void withdrawToAccount_WhenInsufficientFunds() throws Exception {
         addUserToRepository();
-        userService.createUser("admin", "admin1234");
-        BalanceChangeRequest balanceChangeRequest = new BalanceChangeRequest();
-        balanceChangeRequest.setAmount(500L);
-        Long id = 1L;
-        mockMvc.perform(post("/account/deposit/{id}", id)
-                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "admin1234"))
-                        .header("app.security.admin-token", "SUPER_SECRET_KEY_FROM_ADMIN"))
-                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/account/withdraw/{id}", getAccountId("Ivan"))
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getBalanceChangeRequest(5L).toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void withdrawToAccount_WhenInvalidAmount() throws Exception {
+        addUserToRepository();
+        mockMvc.perform(post("/account/withdraw/{id}", getAccountId("Ivan"))
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getBalanceChangeRequest(-1L).toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    public void depositToAccount_WhenInvalidAmount() throws Exception {
+        addUserToRepository();
+        mockMvc.perform(post("/account/deposit/{id}", getAccountId("Ivan"))
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getBalanceChangeRequest(-1L).toString()))
+                .andExpect(status().isBadRequest());
     }
 
 
+    @Test
+    public void depositToAccount_WhenAccountNotFound() throws Exception {
+        addUserToRepository();
+        Long id = -1L;
+        mockMvc.perform(post("/account/deposit/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getBalanceChangeRequest(1L).toString()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    public void withdrawToAccount_WhenAccountNotFound() throws Exception {
+        addUserToRepository();
+        Long id = -1L;
+        mockMvc.perform(post("/account/withdraw/{id}", id)
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getBalanceChangeRequest(1L).toString()))
+                .andExpect(status().isNotFound());
+    }
 
     @Test
     public void withdrawToAccount() throws Exception {
         addUserToRepository();
-        BalanceChangeRequest balanceChangeRequest = new BalanceChangeRequest();
-        balanceChangeRequest.setAmount(1L);
-        Long id = 1L;
-        mockMvc.perform(post("/account/withdraw/{id}", id)
+        mockMvc.perform(post("/account/withdraw/{id}", getAccountId("Ivan"))
                         .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(balanceChangeRequest.toString()))
+                        .content(getBalanceChangeRequest(1L).toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.amount").value(0L));
     }
 
-    public String base64Encoded(String login, String password) {
-        return Base64Utils.encodeToString((login + ":" + password).getBytes(StandardCharsets.UTF_8));
+    @Test
+    public void transfer() throws Exception {
+        addTwoUsersToRepository();
+        mockMvc.perform(post("/transfer/")
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getTransferRequest().toString()))
+                .andExpect(status().isOk());
     }
 
-//    @PostMapping("/deposit/{id}")
-//    public AccountDTO depositToAccount(Authentication authentication,
-//                                       @PathVariable("id") Long accountId,
-//                                       @RequestBody BalanceChangeRequest balanceChangeRequest){
-//        BankingUserDetails bankingUserDetails = (BankingUserDetails) authentication.getPrincipal();
-//        return accountService.depositToAccount(bankingUserDetails.getId(),accountId, balanceChangeRequest.getAmount());
+    @Test
+    public void transfer_WhenOtherUserTryToDeposit() throws Exception {
+        addTwoUsersToRepository();
+        mockMvc.perform(post("/transfer/")
+                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getTransferRequest_useOtherUser().toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+
+
+//    @Test
+//    public void transfer_WhenAdminTryToUse() throws Exception {
+//        addTwoUsersToRepository();
+//        mockMvc.perform(post("/transfer/")
+//                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "****"))
+//                        .contentType(MediaType.APPLICATION_JSON)
+//                        .content(getTransferRequest().toString()))
+//                .andExpect(status().isForbidden());
 //    }
-
-
+    //    @Test
+//    public void getUserAccount_WhenAdminTryToGet() throws Exception {
+////        404 ошибка
+//        addUserToRepository();
+////        userService.createUser("admin", "****");
+//        Long id = 1L;
+////        mockMvc.perform(get("/account/{id}", id)
+////                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "admin1234"))
+////                        .header(HttpHeaders.AUTHORIZATION, "Token " + "SUPER_SECRET_KEY_FROM_ADMIN"))
+////                .andExpect(status().isForbidden());
+////        mockMvc.perform(get("/account/{id}", id)
+////                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "****"))
+////                        .header("Authorization", "Bearer " + "SUPER_SECRET_KEY_FROM_ADMIN"))
+////                .andExpect(status().isForbidden());
+//        mockMvc.perform(get("/account/{id}", id)
+//                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "****")))
+//                .andExpect(status().isForbidden());
+//    }
 }

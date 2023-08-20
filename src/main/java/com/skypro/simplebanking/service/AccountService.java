@@ -10,6 +10,8 @@ import com.skypro.simplebanking.exception.InvalidAmountException;
 import com.skypro.simplebanking.exception.WrongCurrencyException;
 import com.skypro.simplebanking.repository.AccountRepository;
 import java.util.ArrayList;
+import java.util.Collection;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
