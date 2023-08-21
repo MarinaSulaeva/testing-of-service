@@ -287,31 +287,57 @@ public class IntegrationTests {
 
 
 
-//    @Test
-//    public void transfer_WhenAdminTryToUse() throws Exception {
-//        addTwoUsersToRepository();
-//        mockMvc.perform(post("/transfer/")
-//                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "****"))
-//                        .contentType(MediaType.APPLICATION_JSON)
-//                        .content(getTransferRequest().toString()))
-//                .andExpect(status().isForbidden());
-//    }
-    //    @Test
-//    public void getUserAccount_WhenAdminTryToGet() throws Exception {
-////        404 ошибка
-//        addUserToRepository();
-////        userService.createUser("admin", "****");
-//        Long id = 1L;
-////        mockMvc.perform(get("/account/{id}", id)
-////                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "admin1234"))
-////                        .header(HttpHeaders.AUTHORIZATION, "Token " + "SUPER_SECRET_KEY_FROM_ADMIN"))
-////                .andExpect(status().isForbidden());
-////        mockMvc.perform(get("/account/{id}", id)
-////                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "****"))
-////                        .header("Authorization", "Bearer " + "SUPER_SECRET_KEY_FROM_ADMIN"))
-////                .andExpect(status().isForbidden());
-//        mockMvc.perform(get("/account/{id}", id)
-//                        .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("admin", "****")))
-//                .andExpect(status().isForbidden());
-//    }
+    @Test
+    @WithMockUser(username = "admin", roles = "ADMIN", password = "****")
+    public void transfer_WhenAdminTryToUse() throws Exception {
+        addTwoUsersToRepository();
+        userService.createUser("admin", "****");
+        mockMvc.perform(post("/transfer/")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getTransferRequestForAdmin().toString()))
+                .andExpect(status().isForbidden());
+    }
+
+    private JSONObject getTransferRequestForAdmin() throws JSONException {
+        JSONObject transferRequest = new JSONObject();
+        User user = userRepository.findByUsername("Petr").orElseThrow();
+        Long idRecipientUser = user.getId();
+        transferRequest.put("fromAccountId", getAccountId("admin"));
+        transferRequest.put("toUserId", idRecipientUser);
+        transferRequest.put("toAccountId", getAccountId("Petr"));
+        transferRequest.put("amount", 0L);
+        return transferRequest;
+    }
+    @Test
+    @WithMockUser(username = "admin", roles = "ADMIN", password = "****")
+    public void getUserAccount_WhenAdminTryToGet() throws Exception {
+        addUserToRepository();
+        userService.createUser("admin", "****");
+        Long id = getAccountId("admin");
+        mockMvc.perform(get("/account/{id}", id))
+                        .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = "ADMIN", password = "****")
+    public void withdrawToAccount_WhenAdminTryToUse() throws Exception {
+        addUserToRepository();
+        userService.createUser("admin", "****");
+        mockMvc.perform(post("/account/withdraw/{id}", getAccountId("admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getBalanceChangeRequest(1L).toString()))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = "ADMIN", password = "****")
+    public void depositToAccount_WhenAdminTryToUse() throws Exception {
+        addUserToRepository();
+        userService.createUser("admin", "****");
+        mockMvc.perform(post("/account/deposit/{id}", getAccountId("admin"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getBalanceChangeRequest(500L).toString()))
+                .andExpect(status().isForbidden());
+    }
+
 }
