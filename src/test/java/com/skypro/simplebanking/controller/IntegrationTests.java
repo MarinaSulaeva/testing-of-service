@@ -93,29 +93,18 @@ public class IntegrationTests {
         return balanceChangeRequest;
     }
 
-    private JSONObject getTransferRequest() throws JSONException {
+    private JSONObject getTransferRequest(String username, Long idForOtherUser) throws JSONException {
         JSONObject transferRequest = new JSONObject();
         User user = userRepository.findByUsername("Petr").orElseThrow();
         Long idRecipientUser = user.getId();
-        transferRequest.put("fromAccountId", getAccountId("Ivan"));
+        transferRequest.put("fromAccountId", getAccountId(username) + idForOtherUser);
         transferRequest.put("toUserId", idRecipientUser);
         transferRequest.put("toAccountId", getAccountId("Petr"));
         transferRequest.put("amount", 0L);
         return transferRequest;
     }
 
-    private JSONObject getTransferRequest_useOtherUser() throws JSONException {
-        JSONObject transferRequest = new JSONObject();
-        User user = userRepository.findByUsername("Petr").orElseThrow();
-        Long idRecipientUser = user.getId();
-        transferRequest.put("fromAccountId", getAccountId("Ivan")+1L);
-        transferRequest.put("toUserId", idRecipientUser);
-        transferRequest.put("toAccountId", getAccountId("Petr"));
-        transferRequest.put("amount", 0L);
-        return transferRequest;
-    }
-
-    private long getAccountId (String username){
+    private long getAccountId(String username) {
         long userId = userRepository.findByUsername(username).orElseThrow().getId();
         Collection<Account> account = accountRepository.findByUserId(userId);
         List<Account> accountList = new ArrayList<>(account);
@@ -131,8 +120,8 @@ public class IntegrationTests {
     public void createUser() throws Exception {
         userRepository.deleteAll();
         mockMvc.perform(post("/user/")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(getCreateUserRequest("Ivan", "ivan1234").toString()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getCreateUserRequest("Ivan", "ivan1234").toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("Ivan"));
     }
@@ -195,8 +184,8 @@ public class IntegrationTests {
         addUserToRepository();
         mockMvc.perform(post("/account/deposit/{id}", getAccountId("Ivan"))
                         .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(getBalanceChangeRequest(500L).toString()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(getBalanceChangeRequest(500L).toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.amount").value(501L));
     }
@@ -271,7 +260,7 @@ public class IntegrationTests {
         mockMvc.perform(post("/transfer/")
                         .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(getTransferRequest().toString()))
+                        .content(getTransferRequest("Ivan", 0L).toString()))
                 .andExpect(status().isOk());
     }
 
@@ -281,10 +270,9 @@ public class IntegrationTests {
         mockMvc.perform(post("/transfer/")
                         .header(HttpHeaders.AUTHORIZATION, "Basic " + base64Encoded("Ivan", "ivan1234"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(getTransferRequest_useOtherUser().toString()))
+                        .content(getTransferRequest("Ivan", 1L).toString()))
                 .andExpect(status().isBadRequest());
     }
-
 
 
     @Test
@@ -294,34 +282,26 @@ public class IntegrationTests {
         userService.createUser("admin", "****");
         mockMvc.perform(post("/transfer/")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(getTransferRequestForAdmin().toString()))
+                        .content(getTransferRequest("admin", 0L).toString()))
                 .andExpect(status().isForbidden());
     }
 
-    private JSONObject getTransferRequestForAdmin() throws JSONException {
-        JSONObject transferRequest = new JSONObject();
-        User user = userRepository.findByUsername("Petr").orElseThrow();
-        Long idRecipientUser = user.getId();
-        transferRequest.put("fromAccountId", getAccountId("admin"));
-        transferRequest.put("toUserId", idRecipientUser);
-        transferRequest.put("toAccountId", getAccountId("Petr"));
-        transferRequest.put("amount", 0L);
-        return transferRequest;
-    }
     @Test
     @WithMockUser(username = "admin", roles = "ADMIN", password = "****")
     public void getUserAccount_WhenAdminTryToGet() throws Exception {
-        addUserToRepository();
+        userRepository.deleteAll();
+        accountRepository.deleteAll();
         userService.createUser("admin", "****");
         Long id = getAccountId("admin");
         mockMvc.perform(get("/account/{id}", id))
-                        .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden());
     }
 
     @Test
     @WithMockUser(username = "admin", roles = "ADMIN", password = "****")
     public void withdrawToAccount_WhenAdminTryToUse() throws Exception {
-        addUserToRepository();
+        userRepository.deleteAll();
+        accountRepository.deleteAll();
         userService.createUser("admin", "****");
         mockMvc.perform(post("/account/withdraw/{id}", getAccountId("admin"))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -332,7 +312,8 @@ public class IntegrationTests {
     @Test
     @WithMockUser(username = "admin", roles = "ADMIN", password = "****")
     public void depositToAccount_WhenAdminTryToUse() throws Exception {
-        addUserToRepository();
+        userRepository.deleteAll();
+        accountRepository.deleteAll();
         userService.createUser("admin", "****");
         mockMvc.perform(post("/account/deposit/{id}", getAccountId("admin"))
                         .contentType(MediaType.APPLICATION_JSON)
